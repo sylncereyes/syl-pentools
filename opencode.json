@@ -11,6 +11,8 @@
       "head *": "allow",
       "tail *": "allow",
       "wc *": "allow",
+      "*qa-auth*": "deny",
+      "*.env*": "deny",
       "jq *": "allow",
       "mkdir *": "allow",
       "bash qa/login_b.sh": "allow",
