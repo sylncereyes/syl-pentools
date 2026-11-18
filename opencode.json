@@ -8,6 +8,7 @@
       "ls *": "allow",
       "cat *": "allow",
       "grep *": "allow",
+      "bash qa/api_anon.sh*": "allow",
       "head *": "allow",
       "tail *": "allow",
       "wc *": "allow",
