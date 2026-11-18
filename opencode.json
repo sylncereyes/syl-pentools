@@ -13,6 +13,8 @@
       "wc *": "allow",
       "jq *": "allow",
       "mkdir *": "allow",
+      "bash qa/login_b.sh": "allow",
+      "bash qa/api_b.sh*": "allow",
       "pgrep *": "allow",
       "bash qa/smoke.sh": "allow",
       "curl *": "allow",

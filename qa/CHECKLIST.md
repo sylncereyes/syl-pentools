@@ -4,7 +4,7 @@ Prioritas: P0 kritis · P1 tinggi · P2 sedang · P3 rendah
 Item untuk fitur yang tidak ada → `[~] — N/A: fitur tidak ada`.
 
 ## SETUP (F0)
-- [!] SETUP-01 (P0) Smoke: frontend, API /api/health, Socket.IO, Postgres, Redis, Celery — ENV-001 — bukti: qa/evidence/SETUP-01/
+- [x] SETUP-01 (P0) Smoke: frontend, API /api/health, Socket.IO, Postgres, Redis, Celery — bukti: qa/evidence/SETUP-01/
 - [x] SETUP-02 (P0) Discovery selesai: qa/reports/app_map.md — bukti: qa/evidence/SETUP-02/
 - [x] SETUP-03 (P1) Checklist dipetakan ke fitur nyata atau N/A — bukti: qa/evidence/SETUP-03/
 - [x] SETUP-04 (P1) Akun uji User A tersedia. User B dibuat saat F1 — bukti: qa/evidence/SETUP-04/

@@ -38,6 +38,12 @@ Bahasa laporan: Indonesia. Ringkas dan faktual.
 15. Jangan buka qa/auth/* dan .env dengan tool Read. Panggil API hanya lewat: bash qa/api.sh METHOD /path ['json'].
 16. Jangan edit AGENTS.md, opencode.json, qa/scope.yml, qa/smoke.sh, qa/login.sh, qa/api.sh.
 17. BUG-xxx hanya untuk bug aplikasi. Masalah lingkungan → qa/bugs/ENV-xxx.md. Cek nomor terakhir di qa/bugs/ sebelum membuat file baru.
+18. Jangan buka backend/.env, .env, atau qa/auth/* dengan tool Read atau cat. Kredensial DB tidak boleh masuk konteks.
+19. Panggil API sebagai User A lewat bash qa/api.sh, sebagai User B lewat bash qa/api_b.sh. Buat User B dengan bash qa/login_b.sh.
+20. Jangan edit qa/login_b.sh dan qa/api_b.sh.
+21. Untuk email unik, jalankan date +%s sendiri dulu, lalu tulis angkanya langsung di perintah. Jangan pakai substitusi $(...) di dalam argumen.
+22. Cek last_login setelah login berhasil. Laporkan hasilnya di checklist AUTH, bukan sebagai BUG, kecuali kamu bisa buktikan bahwa seharusnya terisi.
+23. Rate limit API 100 request per jendela (header x-ratelimit-*). Jangan melampaui batas di scope.yml, dan hentikan kalau mendapat 429 beruntun.
 
 ## Format status di qa/CHECKLIST.md
 Ubah `[ ]` menjadi:
