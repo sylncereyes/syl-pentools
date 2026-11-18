@@ -1,0 +1,44 @@
+# Core
+starlette==0.27.0
+uvicorn[standard]==0.23.2
+python-multipart==0.0.6
+
+# Database
+sqlalchemy==2.0.23
+alembic==1.12.1
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+
+# Background tasks
+celery==5.3.4
+redis>=6.1
+
+# Scheduling
+apscheduler==3.10.4
+
+# Scanners
+python-nmap==0.7.1
+nuclei-python==0.1.0
+
+# Reports
+python-docx==1.1.0
+reportlab==4.0.8
+jinja2==3.1.2
+weasyprint==61.2
+
+# Auth & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-dotenv==1.0.0
+httpx==0.25.2
+playwright==1.40.0
+
+# Graph
+networkx==3.2.1
+
+# Utils
+pydantic==2.5.2
+pydantic-settings==2.1.0
+python-socketio==5.10.0
+
+packaging>=24.0
