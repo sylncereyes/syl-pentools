@@ -44,6 +44,9 @@ Bahasa laporan: Indonesia. Ringkas dan faktual.
 21. Untuk email unik, jalankan date +%s sendiri dulu, lalu tulis angkanya langsung di perintah. Jangan pakai substitusi $(...) di dalam argumen.
 22. Cek last_login setelah login berhasil. Laporkan hasilnya di checklist AUTH, bukan sebagai BUG, kecuali kamu bisa buktikan bahwa seharusnya terisi.
 23. Rate limit API 100 request per jendela (header x-ratelimit-*). Jangan melampaui batas di scope.yml, dan hentikan kalau mendapat 429 beruntun.
+24. Kredensial ada di ~/.qa-auth (bukan qa/auth). Jangan baca, cat, atau grep di sana. Itu menggantikan rujukan qa/auth pada aturan 15 dan 18.
+25. Simpan output dengan redirect: bash qa/api.sh ... > qa/evidence/ID/nama.txt 2>&1. Jangan pakai pipe atau tee. Pipe hanya boleh ke head, tail, atau jq.
+26. Jangan klaim sebuah item lulus atau checklist sudah berubah tanpa menjalankan Edit dan membaca ulang barisnya.
 
 ## Format status di qa/CHECKLIST.md
 Ubah `[ ]` menjadi:
