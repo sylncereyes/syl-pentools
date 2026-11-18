@@ -47,6 +47,9 @@ Bahasa laporan: Indonesia. Ringkas dan faktual.
 24. Kredensial ada di ~/.qa-auth (bukan qa/auth). Jangan baca, cat, atau grep di sana. Itu menggantikan rujukan qa/auth pada aturan 15 dan 18.
 25. Simpan output dengan redirect: bash qa/api.sh ... > qa/evidence/ID/nama.txt 2>&1. Jangan pakai pipe atau tee. Pipe hanya boleh ke head, tail, atau jq.
 26. Jangan klaim sebuah item lulus atau checklist sudah berubah tanpa menjalankan Edit dan membaca ulang barisnya.
+27. Tes tanpa token: bash qa/api_anon.sh. qa/api.sh selalu memasang token User A.
+28. Tes manipulasi token, logout, dan refresh dijalankan tester, hasilnya di qa/evidence/F1-manual/. Jangan mencoba membaca ~/.qa-auth. Item yang butuh itu: tandai ~ dan rujuk file manual.
+29. Kalau satu perintah ditolak izin, jangan cari jalan lain. Tandai item ~ dengan alasan, lanjut ke item berikutnya.
 
 ## Format status di qa/CHECKLIST.md
 Ubah `[ ]` menjadi:

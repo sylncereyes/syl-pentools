@@ -10,4 +10,4 @@ T=$(cat "${TOKEN_FILE:-/home/kali/.qa-auth/access_token}" 2>/dev/null)
 args=(-s -w '\nHTTP %{http_code}\n' -X "$M" "$API_URL$P" -H 'Content-Type: application/json')
 [ -n "$T" ] && args+=(-H "Authorization: Bearer $T")
 [ -n "$B" ] && args+=(-d "$B")
-curl "${args[@]}"
+curl "${args[@]}" | sed -E 's/eyJ[A-Za-z0-9_.-]+/<JWT>/g'
