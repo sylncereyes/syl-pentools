@@ -1,3 +1,7 @@
+# syl-pentools
+
+A vulnerability management platform inspired by [Pentest-Tools.com](https://pentest-tools.com/), built with REA-based reverse engineering insights.
+
 ## Features Implemented
 
 ### Core Modules

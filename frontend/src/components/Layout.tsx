@@ -39,7 +39,7 @@ export function Layout() {
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex h-16 items-center justify-between px-4 border-b border-slate-200">
-          <span className="font-semibold text-slate-900">Pentest Clone</span>
+          <span className="font-semibold text-slate-900">syl-pentools</span>
           <button onClick={() => setSidebarOpen(false)} className="md:hidden p-1 text-slate-500 hover:text-slate-700"><X size={20} /></button>
         </div>
         <nav className="p-4 space-y-1">

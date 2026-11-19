@@ -4,7 +4,7 @@ import os
 
 class Settings(BaseSettings):
     # App
-    APP_NAME: str = "Pentest Clone API"
+    APP_NAME: str = "syl-pentools API"
     DEBUG: bool = True
     API_V1_PREFIX: str = "/api/v1"
     

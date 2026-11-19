@@ -1,5 +1,5 @@
 """
-Pentest Clone API — Starlette + PostgreSQL + Celery + Socket.IO.
+syl-pentools API — Starlette + PostgreSQL + Celery + Socket.IO.
 
 The API server owns the database and the realtime socket layer. Scans are
 executed by Celery workers (services.scanner_tasks); this process polls the
@@ -506,9 +506,9 @@ async def openapi_schema(request):
     schema = {
         "openapi": "3.0.3",
         "info": {
-            "title": "Pentest Clone API",
+            "title": "syl-pentools API",
             "version": "1.0.0",
-            "description": "API for Pentest Clone - Vulnerability Management Platform",
+            "description": "API for syl-pentools - Vulnerability Management Platform",
         },
         "servers": [
             {"url": "http://localhost:8000", "description": "Development server"}

@@ -52,7 +52,7 @@ class IntegrationService:
                         {"title": "Scanner", "value": finding.get("source", "N/A"), "short": True},
                         {"title": "Status", "value": finding.get("status", "open").upper(), "short": True},
                     ],
-                    "footer": "Pentest Clone",
+                    "footer": "syl-pentools",
                     "ts": int(datetime.now(timezone.utc).timestamp()),
                 }]
             }
@@ -83,7 +83,7 @@ class IntegrationService:
                 }]
             }
         else:
-            payload = {"text": f"Pentest Clone: {event}"}
+            payload = {"text": f"syl-pentools: {event}"}
 
         try:
             resp = await self.client.post(webhook_url, json=payload)
@@ -141,7 +141,7 @@ class IntegrationService:
                 }]
             }
         else:
-            payload = {"@type": "MessageCard", "summary": f"Pentest Clone: {event}"}
+            payload = {"@type": "MessageCard", "summary": f"syl-pentools: {event}"}
 
         try:
             resp = await self.client.post(webhook_url, json=payload)
@@ -176,7 +176,7 @@ class IntegrationService:
                         {"name": "Scanner", "value": finding.get("source", "N/A"), "inline": True},
                         {"name": "Status", "value": finding.get("status", "open").upper(), "inline": True},
                     ],
-                    "footer": {"text": "Pentest Clone"},
+                    "footer": {"text": "syl-pentools"},
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }]
             }
@@ -191,12 +191,12 @@ class IntegrationService:
                         {"name": "Type", "value": scan.get("type", "N/A"), "inline": True},
                         {"name": "Findings", "value": str(scan.get("findings_count", 0)), "inline": True},
                     ],
-                    "footer": {"text": "Pentest Clone"},
+                    "footer": {"text": "syl-pentools"},
                     "timestamp": datetime.now(timezone.utc).isoformat(),
                 }]
             }
         else:
-            payload = {"content": f"Pentest Clone: {event}"}
+            payload = {"content": f"syl-pentools: {event}"}
 
         try:
             resp = await self.client.post(webhook_url, json=payload)
