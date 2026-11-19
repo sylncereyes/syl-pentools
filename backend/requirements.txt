@@ -18,7 +18,7 @@ apscheduler==3.10.4
 
 # Scanners
 python-nmap==0.7.1
-nuclei-python==0.1.0
+nuclei==0.1.0
 
 # Reports
 python-docx==1.1.0
