@@ -1,6 +1,6 @@
 # syl-pentools
 
-A vulnerability management platform inspired by [Pentest-Tools.com](https://pentest-tools.com/), built with REA-based reverse engineering insights.
+A vulnerability management platform built with REA-based reverse engineering insights.
 
 ## Features Implemented
 
@@ -73,7 +73,7 @@ cd backend && pip install -r requirements.txt && uvicorn main:app --reload
 - [ ] AI-powered findings triage
 - [ ] Compliance report templates (PCI DSS, ISO 27001)
 
-## Architecture (from REA analysis of Pentest-Tools.com)
+## Architecture (from REA analysis)
 
 ```
 Frontend (React/Inertia) ←→ Backend (Laravel/FastAPI)
@@ -86,4 +86,4 @@ Frontend (React/Inertia) ←→ Backend (Laravel/FastAPI)
 
 ## License
 
-MIT - Clone for educational/research purposes only.
+MIT - For educational/research purposes only.

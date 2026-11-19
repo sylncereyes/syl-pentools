@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
     SMTP_USER: str = os.getenv("SMTP_USER", "")
     SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
-    SMTP_FROM: str = os.getenv("SMTP_FROM", "noreply@pentest-tools.local")
+    SMTP_FROM: str = os.getenv("SMTP_FROM", "noreply@syl-pentools.local")
     SMTP_TLS: bool = os.getenv("SMTP_TLS", "true").lower() == "true"
     
     class Config:
