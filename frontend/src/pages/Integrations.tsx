@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAppStore, type Integration } from '../store/useAppStore'
 import { api } from '../lib/api'
-import { MessageSquare, Users, Globe, Link2, Github, Cloud, Database, Zap, Shield, Search, Settings as SettingsIcon, ExternalLink, Plus, Minus } from 'lucide-react'
+import { MessageSquare, Users, Globe, Link2, Github, Cloud, Database, Zap, Shield, Search, Settings as SettingsIcon, ExternalLink, Plus, Minus, Save } from 'lucide-react'
 
 const integrations = [
   { id: 'teams', name: 'Microsoft Teams', icon: Users, description: 'View an instant summary of your scan results in your chosen Teams channel', color: 'bg-purple-600', docsUrl: '#', type: 'teams' as const },
@@ -22,6 +22,8 @@ export function Integrations() {
   const { integrations: userIntegrations, setIntegrations, toggleIntegration } = useAppStore()
   const [search, setSearch] = useState('')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [configForms, setConfigForms] = useState<Record<string, { webhook_url: string; auth_type: string; token: string; notify_critical: boolean; notify_high: boolean; notify_fp: boolean }>>({})
+  const [savingConfig, setSavingConfig] = useState<string | null>(null)
 
   const backendIds = new Set(['slack', 'teams', 'jira', 'webhook', 'github', 'discord', 'aws', 'vanta'])
   const mergedIntegrations = integrations.map(i => ({
@@ -64,6 +66,32 @@ export function Integrations() {
     setExpandedId(expandedId === id ? null : id)
   }
 
+  const saveConfig = async (id: string) => {
+    const form = configForms[id]
+    if (!form) return
+    setSavingConfig(id)
+    try {
+      await api.configureIntegration(id, {
+        config: { webhook_url: form.webhook_url, auth_type: form.auth_type, token: form.token },
+        enabled: true,
+      })
+      setIntegrations(userIntegrations.map(ui => ui.id === id ? { ...ui, configured: true, enabled: true } : ui))
+      setConfigForms(prev => ({ ...prev, [id]: { ...form, webhook_url: form.webhook_url } }))
+      alert('Configuration saved')
+    } catch (e) {
+      alert('Failed to save configuration')
+    } finally {
+      setSavingConfig(null)
+    }
+  }
+
+  const updateConfig = (id: string, field: string, value: string | boolean) => {
+    setConfigForms(prev => ({
+      ...prev,
+      [id]: { ...prev[id], [field]: value },
+    }))
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -96,6 +124,10 @@ export function Integrations() {
               onConfigure={isConfigured ? () => setExpandedId(expandedId === integration.id ? null : integration.id) : () => configure(integration.id)}
               onToggleEnabled={isConfigured ? () => toggleEnabled(integration.id) : undefined}
               enabled={integration.enabled}
+              configForms={configForms}
+              updateConfig={updateConfig}
+              saveConfig={saveConfig}
+              savingConfig={savingConfig}
             />
           )
         })}
@@ -120,6 +152,10 @@ function IntegrationCard({
   onConfigure,
   onToggleEnabled,
   enabled,
+  configForms,
+  updateConfig,
+  saveConfig,
+  savingConfig,
 }: {
   integration: typeof integrations[0]
   isConfigured: boolean
@@ -128,6 +164,10 @@ function IntegrationCard({
   onConfigure: () => void
   onToggleEnabled?: () => void
   enabled?: boolean
+  configForms: Record<string, { webhook_url: string; auth_type: string; token: string; notify_critical: boolean; notify_high: boolean; notify_fp: boolean }>
+  updateConfig: (id: string, field: string, value: string | boolean) => void
+  saveConfig: (id: string) => void
+  savingConfig: string | null
 }) {
   const Icon = integration.icon
   return (
@@ -173,32 +213,67 @@ function IntegrationCard({
             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200 space-y-3 animate-slide-down">
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Webhook URL / API Endpoint</label>
-                <input type="text" placeholder="https://your-webhook-endpoint.com" className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm" />
+                <input type="text" 
+                  placeholder="https://your-webhook-endpoint.com" 
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  value={configForms[integration.id]?.webhook_url || ''}
+                  onChange={e => updateConfig(integration.id, 'webhook_url', e.target.value)}
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-slate-700 mb-1">Authentication</label>
-                <select className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm">
+                <select className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  value={configForms[integration.id]?.auth_type || 'Bearer Token'}
+                  onChange={e => updateConfig(integration.id, 'auth_type', e.target.value)}
+                >
                   <option>Bearer Token</option>
                   <option>API Key</option>
                   <option>Basic Auth</option>
                   <option>No Auth</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-700 mb-1">Auth Token / API Key</label>
+                <input type="password" 
+                  placeholder="Enter token or key" 
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  value={configForms[integration.id]?.token || ''}
+                  onChange={e => updateConfig(integration.id, 'token', e.target.value)}
+                />
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" className="rounded border-slate-300 text-blue-600" />
+                  <input type="checkbox" 
+                    className="rounded border-slate-300 text-blue-600" 
+                    checked={configForms[integration.id]?.notify_critical || false}
+                    onChange={e => updateConfig(integration.id, 'notify_critical', e.target.checked)}
+                  />
                   <span className="text-slate-600">Critical only</span>
                 </label>
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" className="rounded border-slate-300 text-blue-600" />
+                  <input type="checkbox" 
+                    className="rounded border-slate-300 text-blue-600" 
+                    checked={configForms[integration.id]?.notify_high || false}
+                    onChange={e => updateConfig(integration.id, 'notify_high', e.target.checked)}
+                  />
                   <span className="text-slate-600">High & above</span>
                 </label>
                 <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" className="rounded border-slate-300 text-blue-600" />
+                  <input type="checkbox" 
+                    className="rounded border-slate-300 text-blue-600" 
+                    checked={configForms[integration.id]?.notify_fp || false}
+                    onChange={e => updateConfig(integration.id, 'notify_fp', e.target.checked)}
+                  />
                   <span className="text-slate-600">Include false positives</span>
                 </label>
               </div>
-              <button className="btn-secondary w-full justify-center px-3 py-1.5 text-sm">Save Configuration</button>
+              <button 
+                onClick={() => saveConfig(integration.id)} 
+                disabled={savingConfig === integration.id}
+                className="btn-primary w-full justify-center px-3 py-1.5 text-sm flex items-center gap-2"
+              >
+                <Save size={14} /> {savingConfig === integration.id ? 'Saving…' : 'Save Configuration'}
+              </button>
             </div>
           )}
         </div>

@@ -20,6 +20,7 @@ try:
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
+from celery import shared_task
 from core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -515,7 +516,9 @@ async def create_authenticated_scanner(
 
 
 # Celery task for authenticated scanning
-async def run_authenticated_scan(
+@shared_task(bind=True, max_retries=2, default_retry_delay=60)
+def run_authenticated_scan(
+    self,
     scan_id: str,
     target: str,
     auth_config: Dict[str, Any],
@@ -533,96 +536,100 @@ async def run_authenticated_scan(
     Returns:
         Scan results
     """
-    from core.database import SyncSessionLocal
-    from models.scan import Scan, ScanStatus, ScanLog
-    from sqlalchemy.orm import Session
-    from datetime import datetime
     
-    db: Session = SyncSessionLocal()
-    
-    try:
-        # Get scan record
-        scan = db.query(Scan).filter(Scan.id == scan_id).first()
-        if not scan:
-            raise ValueError(f"Scan {scan_id} not found")
-            
-        scan.status = ScanStatus.RUNNING
-        scan.started_at = datetime.utcnow()
-        db.commit()
+    async def _run_scan():
+        from core.database import SyncSessionLocal
+        from models.scan import Scan, ScanStatus, ScanLog
+        from sqlalchemy.orm import Session
+        from datetime import datetime
         
-        # Log start
-        log = ScanLog(scan_id=scan_id, level="info", message="Authenticated scan started", step="auth", progress=0)
-        db.add(log)
-        db.commit()
-        
-        # Create scanner
-        auth_config_obj = AuthenticationConfig(**auth_config)
-        scanner = AuthenticatedScanner(auth_config_obj)
+        db: Session = SyncSessionLocal()
         
         try:
-            # Authenticate
-            await scanner.authenticate()
-            
-            # Update progress
-            scan.progress = 25.0
+            # Get scan record
+            scan = db.query(Scan).filter(Scan.id == scan_id).first()
+            if not scan:
+                raise ValueError(f"Scan {scan_id} not found")
+                
+            scan.status = ScanStatus.RUNNING
+            scan.started_at = datetime.utcnow()
             db.commit()
             
-            # Scan target and additional URLs
-            urls_to_scan = scan_config.get("urls", [target])
-            wait_for = scan_config.get("wait_for")
-            
-            results = await scanner.scan_pages(urls_to_scan, wait_for)
-            
-            # Update progress
-            scan.progress = 75.0
+            # Log start
+            log = ScanLog(scan_id=scan_id, level="info", message="Authenticated scan started", step="auth", progress=0)
+            db.add(log)
             db.commit()
             
-            # Save results
+            # Create scanner
+            auth_config_obj = AuthenticationConfig(**auth_config)
+            scanner = AuthenticatedScanner(auth_config_obj)
+            
+            try:
+                # Authenticate
+                await scanner.authenticate()
+                
+                # Update progress
+                scan.progress = 25.0
+                db.commit()
+                
+                # Scan target and additional URLs
+                urls_to_scan = scan_config.get("urls", [target])
+                wait_for = scan_config.get("wait_for")
+                
+                results = await scanner.scan_pages(urls_to_scan, wait_for)
+                
+                # Update progress
+                scan.progress = 75.0
+                db.commit()
+                
+                # Save results
+                log = ScanLog(
+                    scan_id=scan_id,
+                    level="info",
+                    message=f"Scanned {len(results)} pages",
+                    step="scan",
+                    progress=75
+                )
+                db.add(log)
+                db.commit()
+                
+                # Finalize
+                scan.status = ScanStatus.COMPLETED
+                scan.completed_at = datetime.utcnow()
+                scan.progress = 100.0
+                scan.current_step = "completed"
+                db.commit()
+                
+                return {
+                    "scan_id": str(scan_id),
+                    "status": "completed",
+                    "pages_scanned": len(results),
+                    "results": results,
+                }
+                
+            finally:
+                await scanner.close()
+                
+        except Exception as e:
+            scan = db.query(Scan).filter(Scan.id == scan_id).first()
+            if scan:
+                scan.status = ScanStatus.FAILED
+                scan.error_message = str(e)
+                scan.completed_at = datetime.utcnow()
+                db.commit()
+                
             log = ScanLog(
                 scan_id=scan_id,
-                level="info",
-                message=f"Scanned {len(results)} pages",
-                step="scan",
-                progress=75
+                level="error",
+                message=f"Scan failed: {str(e)}",
+                step="error",
             )
             db.add(log)
             db.commit()
             
-            # Finalize
-            scan.status = ScanStatus.COMPLETED
-            scan.completed_at = datetime.utcnow()
-            scan.progress = 100.0
-            scan.current_step = "completed"
-            db.commit()
-            
-            return {
-                "scan_id": str(scan_id),
-                "status": "completed",
-                "pages_scanned": len(results),
-                "results": results,
-            }
+            raise
             
         finally:
-            await scanner.close()
-            
-    except Exception as e:
-        scan = db.query(Scan).filter(Scan.id == scan_id).first()
-        if scan:
-            scan.status = ScanStatus.FAILED
-            scan.error_message = str(e)
-            scan.completed_at = datetime.utcnow()
-            db.commit()
-            
-        log = ScanLog(
-            scan_id=scan_id,
-            level="error",
-            message=f"Scan failed: {str(e)}",
-            step="error",
-        )
-        db.add(log)
-        db.commit()
-        
-        raise
-        
-    finally:
-        db.close()
+            db.close()
+    
+    return asyncio.run(_run_scan())

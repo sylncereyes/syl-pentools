@@ -392,6 +392,9 @@ INTEGRATION_CATALOG = [
     {"id": "discord", "name": "Discord", "type": "discord", "description": "Notify a Discord channel."},
     {"id": "aws", "name": "AWS Security Hub", "type": "aws", "description": "Import cloud findings from AWS."},
     {"id": "vanta", "name": "Vanta", "type": "vanta", "description": "Sync evidence for compliance."},
+    {"id": "burp", "name": "Burp Suite", "type": "burp", "description": "Import findings from Burp Suite projects."},
+    {"id": "nucleus", "name": "Nucleus", "type": "nucleus", "description": "Sync findings with Nucleus vulnerability management."},
+    {"id": "mcp", "name": "Model Context Protocol", "type": "mcp", "description": "Integrate with MCP-compatible tools and AI assistants."},
 ]
 
 
@@ -480,8 +483,14 @@ async def read_json(request) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def error(message: str, status: int = 400) -> JSONResponse:
-    return JSONResponse({"detail": message}, status_code=status)
+def error(message: str, status: int = 400, code: str = None, field: str = None) -> JSONResponse:
+    """Return a standardized error response."""
+    error_obj = {"detail": message}
+    if code:
+        error_obj["code"] = code
+    if field:
+        error_obj["field"] = field
+    return JSONResponse(error_obj, status_code=status)
 
 
 # ---------------------------------------------------------------------------
@@ -490,6 +499,55 @@ def error(message: str, status: int = 400) -> JSONResponse:
 
 async def health(request):
     return JSONResponse({"status": "ok", "timestamp": datetime.utcnow().isoformat()})
+
+
+async def openapi_schema(request):
+    """Generate OpenAPI schema dynamically."""
+    schema = {
+        "openapi": "3.0.3",
+        "info": {
+            "title": "Pentest Clone API",
+            "version": "1.0.0",
+            "description": "API for Pentest Clone - Vulnerability Management Platform",
+        },
+        "servers": [
+            {"url": "http://localhost:8000", "description": "Development server"}
+        ],
+        "components": {
+            "securitySchemes": {
+                "BearerAuth": {
+                    "type": "http",
+                    "scheme": "bearer",
+                    "bearerFormat": "JWT"
+                },
+                "ApiKeyAuth": {
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": "X-API-Key"
+                }
+            }
+        },
+        "security": [
+            {"BearerAuth": []},
+            {"ApiKeyAuth": []}
+        ],
+        "paths": {}
+    }
+    
+    # Build paths from routes
+    for route in routes:
+        if hasattr(route, 'path') and hasattr(route, 'methods'):
+            path = route.path
+            methods = [m.lower() for m in route.methods] if route.methods else []
+            if path not in schema["paths"]:
+                schema["paths"][path] = {}
+            for method in methods:
+                schema["paths"][path][method] = {
+                    "summary": route.path,
+                    "responses": {"200": {"description": "Success"}}
+                }
+    
+    return JSONResponse(schema)
 
 
 async def get_current_user_id(request) -> Optional[uuid.UUID]:
@@ -588,11 +646,331 @@ async def logout(request):
     return JSONResponse({"ok": True})
 
 
+async def request_password_reset(request):
+    data = await read_json(request)
+    email = (data.get("email") or "").strip().lower()
+    if not email:
+        return error("Email is required", 400)
+    async with AsyncSessionLocal() as db:
+        auth = AuthService(db)
+        user = await auth.get_user_by_email(email)
+        if not user:
+            return JSONResponse({"ok": True})
+        ip = request.client.host if request.client else None
+        ua = request.headers.get("user-agent")
+        reset_token = await auth.create_password_reset_token(user.id, email, ip, ua)
+        await db.commit()
+        if settings.APP_URL:
+            reset_url = f"{settings.APP_URL}/reset-password?token={reset_token.token_hash[:32]}"
+            email_service.send_email(
+                to=[email],
+                subject="Reset your Pentest Tools password",
+                body_html=f"""
+                <html><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #2c3e50;">Password Reset Request</h2>
+                <p>You requested a password reset for your Pentest Tools account.</p>
+                <p style="text-align: center; margin: 30px 0;">
+                <a href="{reset_url}" style="background-color: #3498db; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
+                    Reset Password
+                </a>
+                </p>
+                <p>Or copy this link: <a href="{reset_url}">{reset_url}</a></p>
+                <p>This link expires in 1 hour.</p>
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+                <p style="font-size: 12px; color: #888;">If you didn't request this, you can safely ignore this email.</p>
+                </div></body></html>
+                """,
+                body_text=f"Reset your password: {reset_url}\nThis link expires in 1 hour.",
+            )
+    return JSONResponse({"ok": True})
+
+
+async def confirm_password_reset(request):
+    data = await read_json(request)
+    token = data.get("token") or ""
+    new_password = data.get("password") or ""
+    if not token or not new_password:
+        return error("Token and new password are required", 400)
+    if len(new_password) < 8:
+        return error("Password must be at least 8 characters", 400)
+    async with AsyncSessionLocal() as db:
+        auth = AuthService(db)
+        reset_token = await auth.validate_password_reset_token(token)
+        if not reset_token:
+            return error("Invalid or expired token", 400)
+        success = await auth.use_password_reset_token(reset_token, new_password)
+        if not success:
+            return error("Failed to reset password", 500)
+        await auth.revoke_all_sessions(reset_token.user_id)
+        await db.commit()
+    return JSONResponse({"ok": True})
+
+
+async def resend_email_verification(request):
+    user = await get_current_user(request)
+    if not user:
+        return error("Not authenticated", 401)
+    if user.is_verified:
+        return error("Email already verified", 400)
+    async with AsyncSessionLocal() as db:
+        auth = AuthService(db)
+        verification_token = await auth.create_email_verification_token(user.id, user.email)
+        await db.commit()
+        if settings.APP_URL:
+            verify_url = f"{settings.APP_URL}/verify-email?token={verification_token.token_hash[:32]}"
+            email_service.send_email(
+                to=[user.email],
+                subject="Verify your Pentest Tools email",
+                body_html=f"""
+                <html><body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+                <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #2c3e50;">Verify Your Email</h2>
+                <p>Click the button below to verify your email address:</p>
+                <p style="text-align: center; margin: 30px 0;">
+                <a href="{verify_url}" style="background-color: #27ae60; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
+                    Verify Email
+                </a>
+                </p>
+                <p>Or copy this link: <a href="{verify_url}">{verify_url}</a></p>
+                <p>This link expires in 24 hours.</p>
+                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+                <p style="font-size: 12px; color: #888;">If you didn't create this account, you can safely ignore this email.</p>
+                </div></body></html>
+                """,
+                body_text=f"Verify your email: {verify_url}\nThis link expires in 24 hours.",
+            )
+    return JSONResponse({"ok": True})
+
+
+async def verify_email(request):
+    token = request.query_params.get("token") or ""
+    if not token:
+        return error("Token is required", 400)
+    async with AsyncSessionLocal() as db:
+        auth = AuthService(db)
+        verification_token = await auth.verify_email_token(token)
+        if not verification_token:
+            return error("Invalid or expired token", 400)
+        success = await auth.confirm_email(verification_token)
+        if not success:
+            return error("Failed to verify email", 500)
+        await db.commit()
+    return JSONResponse({"ok": True, "verified": True})
+
+
 async def me(request):
     user = await get_current_user(request)
     if not user:
         return error("Not authenticated", 401)
     return JSONResponse({"id": str(user.id), "email": user.email, "full_name": user.full_name, "role": user.role.value, "is_active": user.is_active, "is_verified": user.is_verified, "last_login": user.last_login.isoformat() if user.last_login else None})
+
+
+# Settings endpoints
+async def get_user_profile(request):
+    user = await get_current_user(request)
+    if not user:
+        return error("Not authenticated", 401)
+    return JSONResponse({
+        "id": str(user.id),
+        "email": user.email,
+        "full_name": user.full_name,
+        "avatar_url": user.avatar_url,
+        "bio": getattr(user, "bio", None),
+        "timezone": getattr(user, "timezone", "UTC"),
+        "language": getattr(user, "language", "en"),
+    })
+
+
+async def update_user_profile(request):
+    user = await get_current_user(request)
+    if not user:
+        return error("Not authenticated", 401)
+    data = await read_json(request)
+    async with AsyncSessionLocal() as db:
+        user = await db.get(User, user.id)
+        if not user:
+            return error("User not found", 404)
+        if "full_name" in data:
+            user.full_name = data["full_name"]
+        if "avatar_url" in data:
+            user.avatar_url = data["avatar_url"]
+        if "bio" in data:
+            user.bio = data["bio"]
+        if "timezone" in data:
+            user.timezone = data["timezone"]
+        if "language" in data:
+            user.language = data["language"]
+        await db.commit()
+        await db.refresh(user)
+        return JSONResponse({
+            "id": str(user.id),
+            "email": user.email,
+            "full_name": user.full_name,
+            "avatar_url": user.avatar_url,
+            "bio": getattr(user, "bio", None),
+            "timezone": getattr(user, "timezone", "UTC"),
+            "language": getattr(user, "language", "en"),
+        })
+
+
+async def get_notification_settings(request):
+    user = await get_current_user(request)
+    if not user:
+        return error("Not authenticated", 401)
+    # Default notification settings
+    settings = getattr(user, "notification_settings", {})
+    defaults = {
+        "scan_completed": True,
+        "critical_findings": True,
+        "scheduled_scan_reminders": False,
+        "weekly_digest": False,
+        "product_updates": True,
+        "in_app_scan_status": True,
+        "in_app_new_findings": True,
+        "in_app_team_activity": True,
+    }
+    for k, v in defaults.items():
+        if k not in settings:
+            settings[k] = v
+    return JSONResponse(settings)
+
+
+async def update_notification_settings(request):
+    user = await get_current_user(request)
+    if not user:
+        return error("Not authenticated", 401)
+    data = await read_json(request)
+    async with AsyncSessionLocal() as db:
+        user = await db.get(User, user.id)
+        if not user:
+            return error("User not found", 404)
+        current = getattr(user, "notification_settings", {}) or {}
+        current.update(data)
+        user.notification_settings = current
+        await db.commit()
+        return JSONResponse(current)
+
+
+async def get_appearance_settings(request):
+    user = await get_current_user(request)
+    if not user:
+        return error("Not authenticated", 401)
+    settings = getattr(user, "appearance_settings", {})
+    defaults = {
+        "theme": "system",
+        "density": "standard",
+        "sidebar_collapsed": False,
+    }
+    for k, v in defaults.items():
+        if k not in settings:
+            settings[k] = v
+    return JSONResponse(settings)
+
+
+async def update_appearance_settings(request):
+    user = await get_current_user(request)
+    if not user:
+        return error("Not authenticated", 401)
+    data = await read_json(request)
+    async with AsyncSessionLocal() as db:
+        user = await db.get(User, user.id)
+        if not user:
+            return error("User not found", 404)
+        current = getattr(user, "appearance_settings", {}) or {}
+        current.update(data)
+        user.appearance_settings = current
+        await db.commit()
+        return JSONResponse(current)
+
+
+async def list_sessions(request):
+    user = await get_current_user(request)
+    if not user:
+        return error("Not authenticated", 401)
+    auth_header = request.headers.get("Authorization")
+    current_token = auth_header.split(" ", 1)[1] if auth_header and auth_header.startswith("Bearer ") else None
+    async with AsyncSessionLocal() as db:
+        auth = AuthService(db)
+        from models.user import UserSession
+        from datetime import datetime, timezone
+        result = await db.execute(
+            select(UserSession).where(
+                UserSession.user_id == user.id,
+                UserSession.expires_at > datetime.now(timezone.utc),
+            ).order_by(UserSession.created_at.desc())
+        )
+        sessions = result.scalars().all()
+        return JSONResponse([{
+            "id": str(s.id),
+            "ip_address": s.ip_address,
+            "user_agent": s.user_agent,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "expires_at": s.expires_at.isoformat() if s.expires_at else None,
+            "is_current": current_token and hashlib.sha256(current_token.encode()).hexdigest() == s.session_token,
+        } for s in sessions])
+
+
+async def revoke_session(request):
+    user = await get_current_user(request)
+    if not user:
+        return error("Not authenticated", 401)
+    session_id = request.path_params["session_id"]
+    async with AsyncSessionLocal() as db:
+        from models.user import UserSession
+        session = await db.get(UserSession, uuid.UUID(session_id))
+        if not session or session.user_id != user.id:
+            return error("Session not found", 404)
+        await db.delete(session)
+        await db.commit()
+    return JSONResponse({"ok": True})
+
+
+async def revoke_all_sessions(request):
+    user = await get_current_user(request)
+    if not user:
+        return error("Not authenticated", 401)
+    data = await read_json(request)
+    keep_current = data.get("keep_current", False)
+    auth_header = request.headers.get("Authorization")
+    current_token = auth_header.split(" ", 1)[1] if auth_header and auth_header.startswith("Bearer ") else None
+    current_token_hash = hashlib.sha256(current_token.encode()).hexdigest() if current_token else None
+    async with AsyncSessionLocal() as db:
+        from models.user import UserSession
+        from datetime import datetime, timezone
+        query = select(UserSession).where(
+            UserSession.user_id == user.id,
+            UserSession.expires_at > datetime.now(timezone.utc),
+        )
+        if keep_current and current_token_hash:
+            query = query.where(UserSession.session_token != current_token_hash)
+        result = await db.execute(query)
+        sessions = result.scalars().all()
+        for s in sessions:
+            await db.delete(s)
+        await db.commit()
+    return JSONResponse({"ok": True, "revoked": len(sessions)})
+
+
+async def change_password(request):
+    user = await get_current_user(request)
+    if not user:
+        return error("Not authenticated", 401)
+    data = await read_json(request)
+    current_password = data.get("current_password") or ""
+    new_password = data.get("new_password") or ""
+    if not current_password or not new_password:
+        return error("Current password and new password are required", 400)
+    if len(new_password) < 8:
+        return error("Password must be at least 8 characters", 400)
+    from core.auth import verify_password, hash_password
+    if not verify_password(current_password, user.hashed_password):
+        return error("Current password is incorrect", 400)
+    user.hashed_password = hash_password(new_password)
+    async with AsyncSessionLocal() as db:
+        db.add(user)
+        await db.commit()
+    return JSONResponse({"ok": True})
 
 
 async def bootstrap(request):
@@ -657,11 +1035,58 @@ async def list_assets(request):
         return JSONResponse([serialize_asset(a) for a in rows])
 
 
+import re
+import ipaddress
+
+def _validate_asset_target(target: str, asset_type: str) -> tuple[bool, str]:
+    """Validate asset target based on type. Returns (is_valid, error_message)."""
+    target = target.strip()
+    if not target:
+        return False, "target is required"
+    
+    if asset_type in ("hostname", "url"):
+        # Basic hostname/FQDN validation
+        hostname_pattern = r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
+        if asset_type == "url":
+            # For URLs, extract hostname part
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(target)
+                hostname = parsed.hostname or ""
+                if not hostname:
+                    return False, "Invalid URL: missing hostname"
+                target = hostname
+            except Exception:
+                return False, "Invalid URL format"
+        if not re.match(hostname_pattern, target):
+            return False, f"Invalid hostname: {target}"
+    elif asset_type == "ip":
+        try:
+            ipaddress.ip_address(target)
+        except ValueError:
+            return False, f"Invalid IP address: {target}"
+    elif asset_type == "cidr":
+        try:
+            ipaddress.ip_network(target, strict=False)
+        except ValueError:
+            return False, f"Invalid CIDR notation: {target}"
+    else:
+        return False, f"Unknown asset type: {asset_type}"
+    return True, ""
+
+
 async def create_asset(request):
     data = await read_json(request)
     target = (data.get("target") or "").strip()
+    asset_type = data.get("type", "hostname")
     if not target:
         return error("target is required")
+    
+    # Validate target
+    is_valid, error_msg = _validate_asset_target(target, asset_type)
+    if not is_valid:
+        return error(error_msg)
+    
     async with AsyncSessionLocal() as db:
         ws = await resolve_workspace(db, data.get("workspace_id"))
         count = (await db.execute(
@@ -677,7 +1102,7 @@ async def create_asset(request):
         asset = Asset(
             workspace_id=ws.id,
             target=target,
-            type=_normalize_asset_type(data.get("type", "hostname")),
+            type=_normalize_asset_type(asset_type),
             description=data.get("description"),
             risk_level=AssetRiskLevel.NONE,
         )
@@ -915,7 +1340,18 @@ async def list_findings(request):
             query = query.where(Finding.severity == request.query_params["severity"])
         if request.query_params.get("status"):
             query = query.where(Finding.status == request.query_params["status"])
-        rows = (await db.execute(query.order_by(Finding.created_at.desc()).limit(500))).scalars().all()
+        
+        # Pagination
+        try:
+            limit = min(int(request.query_params.get("limit", 50)), 500)
+        except (ValueError, TypeError):
+            limit = 50
+        try:
+            offset = max(int(request.query_params.get("offset", 0)), 0)
+        except (ValueError, TypeError):
+            offset = 0
+        
+        rows = (await db.execute(query.order_by(Finding.created_at.desc()).limit(limit).offset(offset))).scalars().all()
         return JSONResponse([serialize_finding(f) for f in rows])
 
 
@@ -1864,9 +2300,14 @@ async def _broadcast_loop() -> None:
 
 PUBLIC_API_PATHS = {
     "/api/health",
+    "/api/openapi.json",
     "/api/auth/register",
     "/api/auth/login",
     "/api/auth/refresh",
+    "/api/auth/password-reset",
+    "/api/auth/password-reset/confirm",
+    "/api/auth/email-verification/send",
+    "/api/auth/email-verification/verify",
 }
 
 
@@ -1959,6 +2400,10 @@ class AuthEnforcementMiddleware:
         if scope.get("type") != "http":
             return await self.app(scope, receive, send)
         path = scope.get("path", "")
+        method = scope.get("method", "")
+        # Allow OPTIONS preflight requests to pass through for CORS
+        if method == "OPTIONS":
+            return await self.app(scope, receive, send)
         if not path.startswith("/api/") or path in PUBLIC_API_PATHS:
             return await self.app(scope, receive, send)
 
@@ -2937,6 +3382,101 @@ async def update_finding_extended(request):
         return JSONResponse(serialize_finding_detail(finding))
 
 
+async def upload_finding_attachment(request):
+    """Upload an attachment for a finding."""
+    finding_id = request.path_params["finding_id"]
+    async with AsyncSessionLocal() as db:
+        try:
+            finding = await db.get(Finding, uuid.UUID(finding_id))
+        except (ValueError, TypeError):
+            return error("invalid finding id")
+        if not finding:
+            return error("Finding not found", 404)
+        
+        # Check workspace access
+        ws = await resolve_workspace(db, request.headers.get("X-Workspace-ID"))
+        if finding.workspace_id != ws.id:
+            return error("Not found", 404)
+        
+        # Parse multipart form
+        form = await request.form()
+        file = form.get("file")
+        if not file:
+            return error("No file provided", 400)
+        
+        # Read file content
+        content = await file.read()
+        if not content:
+            return error("Empty file", 400)
+        
+        # Create attachment
+        from models.finding import FindingAttachment
+        import hashlib
+        
+        attachment = FindingAttachment(
+            finding_id=finding.id,
+            filename=file.filename,
+            file_size=len(content),
+            mime_type=file.content_type or "application/octet-stream",
+            uploaded_by=(await get_current_user_id(request)) or None,
+            content_hash=hashlib.sha256(content).hexdigest(),
+        )
+        db.add(attachment)
+        await db.commit()
+        await db.refresh(attachment)
+        
+        # Save file to disk
+        import os
+        from core.config import settings
+        upload_dir = os.path.join(settings.REPORTS_DIR, "attachments")
+        os.makedirs(upload_dir, exist_ok=True)
+        file_path = os.path.join(upload_dir, f"{attachment.id}_{file.filename}")
+        with open(file_path, "wb") as f:
+            f.write(content)
+        
+        return JSONResponse({
+            "id": str(attachment.id),
+            "filename": attachment.filename,
+            "file_size": attachment.file_size,
+            "mime_type": attachment.mime_type,
+            "uploaded_at": attachment.uploaded_at.isoformat() if attachment.uploaded_at else None,
+        }, status_code=201)
+
+
+async def delete_finding_attachment(request):
+    """Delete an attachment from a finding."""
+    finding_id = request.path_params["finding_id"]
+    attachment_id = request.path_params["attachment_id"]
+    async with AsyncSessionLocal() as db:
+        try:
+            finding = await db.get(Finding, uuid.UUID(finding_id))
+        except (ValueError, TypeError):
+            return error("invalid finding id")
+        if not finding:
+            return error("Finding not found", 404)
+        
+        ws = await resolve_workspace(db, request.headers.get("X-Workspace-ID"))
+        if finding.workspace_id != ws.id:
+            return error("Not found", 404)
+        
+        from models.finding import FindingAttachment
+        attachment = await db.get(FindingAttachment, uuid.UUID(attachment_id))
+        if not attachment or attachment.finding_id != finding.id:
+            return error("Attachment not found", 404)
+        
+        # Delete file from disk
+        import os
+        from core.config import settings
+        upload_dir = os.path.join(settings.REPORTS_DIR, "attachments")
+        file_path = os.path.join(upload_dir, f"{attachment.id}_{attachment.filename}")
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        
+        await db.delete(attachment)
+        await db.commit()
+        return JSONResponse({"ok": True})
+
+
 async def list_finding_comments(request):
     finding_id = request.path_params["finding_id"]
     async with AsyncSessionLocal() as db:
@@ -3534,12 +4074,28 @@ async def create_authenticated_scan(request):
 
 routes = [
     Route("/api/health", health, methods=["GET"]),
+    Route("/api/openapi.json", openapi_schema, methods=["GET"]),
     Route("/metrics", metrics_endpoint, methods=["GET"]),
     Route("/api/auth/register", register, methods=["POST"]),
     Route("/api/auth/login", login, methods=["POST"]),
     Route("/api/auth/refresh", refresh, methods=["POST"]),
     Route("/api/auth/logout", logout, methods=["POST"]),
     Route("/api/auth/me", me, methods=["GET"]),
+    Route("/api/auth/sessions", list_sessions, methods=["GET"]),
+    Route("/api/auth/sessions/{session_id}", revoke_session, methods=["DELETE"]),
+    Route("/api/auth/sessions/revoke-all", revoke_all_sessions, methods=["POST"]),
+    Route("/api/auth/change-password", change_password, methods=["POST"]),
+    Route("/api/auth/password-reset", request_password_reset, methods=["POST"]),
+    Route("/api/auth/password-reset/confirm", confirm_password_reset, methods=["POST"]),
+    Route("/api/auth/email-verification/send", resend_email_verification, methods=["POST"]),
+    Route("/api/auth/email-verification/verify", verify_email, methods=["GET"]),
+    # User settings
+    Route("/api/user/profile", get_user_profile, methods=["GET"]),
+    Route("/api/user/profile", update_user_profile, methods=["PATCH"]),
+    Route("/api/user/notifications", get_notification_settings, methods=["GET"]),
+    Route("/api/user/notifications", update_notification_settings, methods=["PATCH"]),
+    Route("/api/user/appearance", get_appearance_settings, methods=["GET"]),
+    Route("/api/user/appearance", update_appearance_settings, methods=["PATCH"]),
     Route("/api/bootstrap", bootstrap, methods=["GET"]),
     Route("/api/workspace", get_workspace, methods=["GET"]),
     Route("/api/workspaces", list_workspaces, methods=["GET"]),
@@ -3572,6 +4128,8 @@ routes = [
     Route("/api/findings/{finding_id}", update_finding_extended, methods=["PATCH"]),
     Route("/api/findings/{finding_id}/comments", list_finding_comments, methods=["GET"]),
     Route("/api/findings/{finding_id}/comments", add_finding_comment, methods=["POST"]),
+    Route("/api/findings/{finding_id}/attachments", upload_finding_attachment, methods=["POST"]),
+    Route("/api/findings/{finding_id}/attachments/{attachment_id}", delete_finding_attachment, methods=["DELETE"]),
     Route("/api/integrations", list_integrations, methods=["GET"]),
     Route("/api/integrations/{int_id}", configure_integration, methods=["POST"]),
     Route("/api/integrations/{int_id}/toggle", toggle_integration, methods=["PATCH"]),

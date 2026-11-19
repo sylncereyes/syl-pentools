@@ -206,11 +206,14 @@ class MFAService:
         )
         mfa = result.scalars().first()
 
+        def to_iso(dt):
+            return dt.isoformat() if dt else None
+
         return {
             "totp_enabled": mfa.totp_enabled if mfa else False,
-            "totp_enabled_at": mfa.totp_enabled_at if mfa else None,
+            "totp_enabled_at": to_iso(mfa.totp_enabled_at) if mfa else None,
             "recovery_codes_count": len(mfa.recovery_codes) if mfa and mfa.recovery_codes else 0,
-            "last_used": mfa.last_used if mfa else None,
+            "last_used": to_iso(mfa.last_used) if mfa else None,
         }
 
 
