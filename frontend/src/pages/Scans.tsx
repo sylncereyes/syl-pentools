@@ -1,10 +1,27 @@
 import { useState, useEffect, FormEvent } from 'react'
 import { useAppStore } from '../store/useAppStore'
 import { useSocket } from '../context/SocketContext'
-import { Plus, Search, Filter, Calendar, Clock, Play, Pause, RotateCcw, Eye, Download, ChevronLeft, ChevronRight, CheckCircle, AlertTriangle, Activity } from 'lucide-react'
+import { Plus, Search, Filter, Calendar, Clock, Play, Pause, RotateCcw, Eye, Download, ChevronLeft, ChevronRight, CheckCircle, AlertTriangle, Activity, Columns, Filter as FilterIcon } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { schedulesApi, type ScheduledScanRecord } from '../lib/api'
 import { formatDistanceToNow } from 'date-fns'
+
+function DropdownMenu({ trigger, children, align = 'right' }: { trigger: React.ReactNode; children: React.ReactNode; align?: 'left' | 'right' }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative" onClick={() => setOpen(!open)}>
+      <div>{trigger}</div>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className={`fixed z-50 mt-2 w-56 bg-white rounded-lg border border-slate-200 shadow-lg py-1 ${align === 'right' ? 'right-0' : 'left-0'}`}>
+            {children}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
 
 const statusConfig = {
   pending: { label: 'Pending', className: 'status-pending', icon: Clock },
@@ -223,15 +240,51 @@ export function Scans() {
           <input type="text" placeholder="Search scans..." value={search} onChange={e => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
         </div>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="px-4 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-          <option value="all">All Status</option>
-          <option value="running">Running</option>
-          <option value="completed">Completed</option>
-          <option value="failed">Failed</option>
-          <option value="pending">Pending</option>
-        </select>
-        <button className="btn-secondary flex items-center gap-2 px-4 py-2"><Filter size={18} /> Filters off</button>
-        <button className="btn-secondary flex items-center gap-2 px-4 py-2">Table options</button>
+        <DropdownMenu trigger={<button className="btn-secondary flex items-center gap-2 px-4 py-2"><FilterIcon size={18} /> Filters</button>}>
+          <div className="p-2 border-b border-slate-200">
+            <p className="px-2 py-1 text-xs font-medium text-slate-500 uppercase">Status</p>
+          </div>
+          <button className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100" onClick={() => setStatusFilter('all')}>All Status</button>
+          <button className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100" onClick={() => setStatusFilter('running')}>Running</button>
+          <button className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100" onClick={() => setStatusFilter('completed')}>Completed</button>
+          <button className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100" onClick={() => setStatusFilter('failed')}>Failed</button>
+          <button className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100" onClick={() => setStatusFilter('pending')}>Pending</button>
+          <div className="p-2 border-b border-slate-200">
+            <p className="px-2 py-1 text-xs font-medium text-slate-500 uppercase">Scan Type</p>
+          </div>
+          <button className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100">Website Scanner</button>
+          <button className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100">Network Scanner</button>
+          <button className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100">Port Scanner</button>
+          <button className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100">Subdomain Finder</button>
+          <button className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100">Website Recon</button>
+          <hr className="my-1 border-slate-200" />
+          <button className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100" onClick={() => setStatusFilter('all')}>Clear all filters</button>
+        </DropdownMenu>
+        <DropdownMenu trigger={<button className="btn-secondary flex items-center gap-2 px-4 py-2"><Columns size={18} /> Table options</button>}>
+          <label className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2">
+            <input type="checkbox" className="rounded border-slate-300 text-blue-600" checked /> Actions
+          </label>
+          <label className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2">
+            <input type="checkbox" className="rounded border-slate-300 text-blue-600" checked /> Scan Type
+          </label>
+          <label className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2">
+            <input type="checkbox" className="rounded border-slate-300 text-blue-600" checked /> Target
+          </label>
+          <label className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2">
+            <input type="checkbox" className="rounded border-slate-300 text-blue-600" checked /> Status
+          </label>
+          <label className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2">
+            <input type="checkbox" className="rounded border-slate-300 text-blue-600" checked /> Progress
+          </label>
+          <label className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2">
+            <input type="checkbox" className="rounded border-slate-300 text-blue-600" checked /> Started
+          </label>
+          <label className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 flex items-center gap-2">
+            <input type="checkbox" className="rounded border-slate-300 text-blue-600" checked /> Details
+          </label>
+          <hr className="my-1 border-slate-200" />
+          <button className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100">Reset to defaults</button>
+        </DropdownMenu>
       </div>
 
       {/* Table */}

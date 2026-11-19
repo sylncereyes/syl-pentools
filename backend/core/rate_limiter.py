@@ -115,9 +115,6 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         for exempt in self.exempt_paths:
             if path.startswith(exempt):
                 return True
-        # Exempt auth endpoints to allow test logins
-        if path.startswith("/api/auth/"):
-            return True
         return False
 
     def _get_limits(self, request: Request) -> tuple[int, int]:

@@ -50,7 +50,7 @@ export function Settings() {
 
           <div className="flex-1 p-6">
             {activeTab === 'profile' && <ProfileTab />}
-            {activeTab === 'security' && <SecurityTab />}
+            {activeTab === 'security' && <SecurityTab setActiveTab={setActiveTab} />}
             {activeTab === 'mfa' && <MFATab />}
             {activeTab === 'notifications' && <NotificationsTab />}
             {activeTab === 'appearance' && <AppearanceTab />}
@@ -88,7 +88,97 @@ function ProfileTab() {
   )
 }
 
-function SecurityTab() {
+function SecurityTab({ setActiveTab }: { setActiveTab: (tab: TabId) => void }) {
+  const [sessions, setSessions] = useState<Array<{id: string; ip_address: string | null; user_agent: string | null; created_at: string | null; expires_at: string | null; is_current: boolean}>>([])
+  const [loadingSessions, setLoadingSessions] = useState(true)
+  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [passwordForm, setPasswordForm] = useState({ current_password: '', new_password: '', confirm_password: '' })
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passwordLoading, setPasswordLoading] = useState(false)
+
+  const token = localStorage.getItem('auth_token')
+  const authHeaders = { ...(token && { Authorization: `Bearer ${token}` }), 'Content-Type': 'application/json' }
+
+  const loadSessions = async () => {
+    setLoadingSessions(true)
+    try {
+      const res = await fetch('/api/auth/sessions', { headers: authHeaders })
+      if (res.ok) {
+        const data = await res.json()
+        setSessions(data)
+      }
+    } catch (e) {
+      console.error('Failed to load sessions:', e)
+    } finally {
+      setLoadingSessions(false)
+    }
+  }
+
+  const revokeSession = async (sessionId: string) => {
+    if (!confirm('Revoke this session?')) return
+    try {
+      const res = await fetch(`/api/auth/sessions/${sessionId}`, { method: 'DELETE', headers: authHeaders })
+      if (res.ok) {
+        setSessions(sessions.filter(s => s.id !== sessionId))
+      } else {
+        alert('Failed to revoke session')
+      }
+    } catch (e) {
+      console.error('Failed to revoke session:', e)
+    }
+  }
+
+  const revokeAllSessions = async () => {
+    if (!confirm('Revoke all other sessions? You will stay logged in on this device.')) return
+    try {
+      const res = await fetch('/api/auth/sessions/revoke-all', { method: 'POST', headers: authHeaders, body: JSON.stringify({ keep_current: true }) })
+      if (res.ok) {
+        const data = await res.json()
+        alert(`Revoked ${data.revoked} sessions`)
+        loadSessions()
+      } else {
+        alert('Failed to revoke sessions')
+      }
+    } catch (e) {
+      console.error('Failed to revoke all sessions:', e)
+    }
+  }
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setPasswordError(null)
+    if (passwordForm.new_password !== passwordForm.confirm_password) {
+      setPasswordError('Passwords do not match')
+      return
+    }
+    if (passwordForm.new_password.length < 8) {
+      setPasswordError('Password must be at least 8 characters')
+      return
+    }
+    setPasswordLoading(true)
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: authHeaders,
+        body: JSON.stringify({ current_password: passwordForm.current_password, new_password: passwordForm.new_password }),
+      })
+      if (res.ok) {
+        setShowChangePassword(false)
+        setPasswordForm({ current_password: '', new_password: '', confirm_password: '' })
+        alert('Password changed successfully')
+      } else {
+        const err = await res.json()
+        setPasswordError(err.detail || 'Failed to change password')
+      }
+    } catch (e) {
+      setPasswordError('Failed to change password')
+    } finally {
+      setPasswordLoading(false)
+    }
+  }
+
+  useEffect(() => { loadSessions() }, [])
+
   return (
     <div className="space-y-6 max-w-xl">
       <Section title="Two-Factor Authentication" description="Add an extra layer of security to your account.">
@@ -97,21 +187,66 @@ function SecurityTab() {
             <p className="font-medium text-green-900">2FA Enabled</p>
             <p className="text-sm text-green-700">Authenticator app</p>
           </div>
-          <button className="btn-secondary px-4 py-2 text-sm">Manage</button>
+          <button onClick={() => setActiveTab('mfa')} className="btn-secondary px-4 py-2 text-sm">Manage</button>
         </div>
       </Section>
 
       <Section title="Password" description="Your password was last changed 30 days ago.">
-        <button className="btn-secondary px-4 py-2">Change Password</button>
+        <button onClick={() => setShowChangePassword(true)} className="btn-secondary px-4 py-2">Change Password</button>
       </Section>
 
       <Section title="Active Sessions" description="Manage where you're logged in.">
         <div className="space-y-2">
-          <SessionRow current={true} />
-          <SessionRow />
-          <SessionRow />
+          {loadingSessions ? (
+            <div className="text-sm text-slate-500">Loading sessions…</div>
+          ) : sessions.length === 0 ? (
+            <div className="text-sm text-slate-500">No active sessions</div>
+          ) : (
+            sessions.map(session => (
+              <SessionRow
+                key={session.id}
+                session={session}
+                onRevoke={revokeSession}
+              />
+            ))
+          )}
+          {!loadingSessions && sessions.length > 1 && (
+            <button onClick={revokeAllSessions} className="btn-secondary text-sm px-3 py-1 mt-2">
+              Revoke all other sessions
+            </button>
+          )}
         </div>
       </Section>
+
+      {showChangePassword && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowChangePassword(false)}>
+          <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+            <h2 className="text-xl font-semibold mb-4">Change Password</h2>
+            <form onSubmit={handleChangePassword} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Current Password</label>
+                <input type="password" value={passwordForm.current_password} onChange={e => setPasswordForm({...passwordForm, current_password: e.target.value})} required
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">New Password</label>
+                <input type="password" value={passwordForm.new_password} onChange={e => setPasswordForm({...passwordForm, new_password: e.target.value})} required minLength={8}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Confirm New Password</label>
+                <input type="password" value={passwordForm.confirm_password} onChange={e => setPasswordForm({...passwordForm, confirm_password: e.target.value})} required
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+              </div>
+              {passwordError && <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-2 text-sm text-red-700">{passwordError}</div>}
+              <div className="flex justify-end gap-3 pt-4">
+                <button type="button" className="btn-secondary px-4 py-2" onClick={() => setShowChangePassword(false)}>Cancel</button>
+                <button type="submit" disabled={passwordLoading} className="btn-primary px-4 py-2">{passwordLoading ? 'Changing…' : 'Change Password'}</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -220,11 +355,19 @@ function MFATab() {
   const [setupStep, setSetupStep] = useState<'idle' | 'verify'>('idle')
   const [verifyToken, setVerifyToken] = useState('')
 
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('auth_token')
+    return {
+      'Content-Type': 'application/json',
+      ...(token && { Authorization: `Bearer ${token}` }),
+    }
+  }
+
   const handleSetupTotp = async () => {
     try {
       const res = await fetch('/api/mfa/totp/setup', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token')}` },
+        headers: getAuthHeaders(),
       })
       if (res.ok) {
         const data = await res.json()
@@ -241,7 +384,7 @@ function MFATab() {
     try {
       const res = await fetch('/api/mfa/totp/enable', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${localStorage.getItem('access_token')}` },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ token: verifyToken }),
       })
       if (res.ok) {
@@ -261,7 +404,7 @@ function MFATab() {
     try {
       const res = await fetch('/api/mfa/totp/disable', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` },
+        headers: getAuthHeaders(),
       })
       if (res.ok) {
         setTotpEnabled(false)
@@ -276,7 +419,7 @@ function MFATab() {
     try {
       const res = await fetch('/api/mfa/recovery-codes', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` },
+        headers: getAuthHeaders(),
       })
       if (res.ok) {
         const data = await res.json()
@@ -427,8 +570,9 @@ function AuthenticatedScansTab() {
 
   const loadConfigs = async () => {
     try {
+      const token = localStorage.getItem('auth_token')
       const res = await fetch('/api/auth/configs', {
-        headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` },
+        headers: { ...(token && { Authorization: `Bearer ${token}` }) },
       })
       if (res.ok) {
         const data = await res.json()
@@ -611,17 +755,43 @@ export function LimitCard({ label, used, limit }: { label: string; used: number 
   )
 }
 
-function SessionRow({ current }: { current?: boolean }) {
+function SessionRow({ session, onRevoke }: { session: { id: string; ip_address: string | null; user_agent: string | null; created_at: string | null; expires_at: string | null; is_current: boolean }; onRevoke: (id: string) => void }) {
+  const parseUA = (ua: string | null) => {
+    if (!ua) return 'Unknown device'
+    if (ua.includes('Chrome')) return 'Chrome'
+    if (ua.includes('Firefox')) return 'Firefox'
+    if (ua.includes('Safari')) return 'Safari'
+    if (ua.includes('Edge')) return 'Edge'
+    return 'Unknown browser'
+  }
+  const parseOS = (ua: string | null) => {
+    if (!ua) return 'Unknown OS'
+    if (ua.includes('Windows')) return 'Windows'
+    if (ua.includes('Mac')) return 'macOS'
+    if (ua.includes('Linux')) return 'Linux'
+    if (ua.includes('Android')) return 'Android'
+    if (ua.includes('iOS')) return 'iOS'
+    return 'Unknown OS'
+  }
+  const browser = parseUA(session.user_agent)
+  const os = parseOS(session.user_agent)
+  const created = session.created_at ? new Date(session.created_at).toLocaleString() : 'Unknown'
   return (
     <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 text-sm font-medium">C</div>
+        <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 text-sm font-medium">{browser[0]}</div>
         <div>
-          <p className="font-medium text-slate-900">Chrome on Linux</p>
-          <p className="text-sm text-slate-500">Active 2 minutes ago • {current ? 'Current' : 'San Francisco, CA'}</p>
+          <p className="font-medium text-slate-900">{browser} on {os}</p>
+          <p className="text-sm text-slate-500">
+            {session.is_current ? 'Current session • ' : ''}
+            Started {created}
+            {session.ip_address && ` • ${session.ip_address}`}
+          </p>
         </div>
       </div>
-      <button className="btn-secondary text-sm px-3 py-1">Revoke</button>
+      {!session.is_current && (
+        <button onClick={() => onRevoke(session.id)} className="btn-secondary text-sm px-3 py-1">Revoke</button>
+      )}
     </div>
   )
 }

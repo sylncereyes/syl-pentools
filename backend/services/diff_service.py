@@ -52,7 +52,7 @@ class DiffService:
 
     def _normalize_finding(self, finding: Any) -> Dict[str, Any]:
         return {
-            "id": finding.id,
+            "id": str(finding.id),
             "title": finding.title,
             "target_url": finding.target_url,
             "parameter": finding.parameter,
@@ -60,7 +60,7 @@ class DiffService:
             "severity": finding.severity.value if finding.severity else "info",
             "status": finding.status.value if finding.status else "open",
             "source_scanner": finding.source_scanner,
-            "scan_id": finding.scan_id,
+            "scan_id": str(finding.scan_id) if finding.scan_id else None,
         }
 
     async def compare_scans(

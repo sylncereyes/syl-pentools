@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     NMAP_PATH: str = os.getenv("NMAP_PATH", "nmap")
     
     # Reports
-    REPORTS_DIR: str = os.getenv("REPORTS_DIR", "/app/reports")
+    REPORTS_DIR: str = os.getenv("REPORTS_DIR", "/tmp/reports")
     TEMPLATES_DIR: str = os.getenv("TEMPLATES_DIR", "/app/templates")
     
     # WebSocket
@@ -70,5 +70,6 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "allow"
 
 settings = Settings()

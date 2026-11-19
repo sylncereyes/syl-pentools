@@ -81,6 +81,9 @@ export function Login() {
         <p className="text-center text-sm text-gray-600">
           Don't have an account? <Link to="/register" className="font-medium text-indigo-600 hover:text-indigo-500">Sign up</Link>
         </p>
+        <p className="text-center text-sm text-gray-600">
+          <Link to="/forgot-password" className="font-medium text-indigo-600 hover:text-indigo-500">Forgot password?</Link>
+        </p>
       </div>
     </div>
   )
