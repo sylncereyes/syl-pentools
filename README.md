@@ -1,7 +1,3 @@
-# Pentest Clone
-
-A vulnerability management platform clone inspired by [Pentest-Tools.com](https://pentest-tools.com/), built with REA-based reverse engineering insights.
-
 ## Features Implemented
 
 ### Core Modules
